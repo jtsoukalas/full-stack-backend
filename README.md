@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a full-stack backend application that integrates MySQL, Neo4j, Kafka, and Python-based producers and consumers. The application reads data from MySQL and Neo4j databases, sends it to Kafka topics, and processes it using Kafka consumers.
+This project is a full-stack backend application that integrates MySQL, Neo4j, MongoDB, Kafka, and Python-based producers and consumers. 
 
 ## Prerequisites
 
@@ -14,6 +14,7 @@ This project is a full-stack backend application that integrates MySQL, Neo4j, K
 - **MySQL**: Stores relational data.
 - **Neo4j**: Stores graph data.
 - **Kafka**: Message broker for data streaming.
+- **MongoDB**: Stores document data.
 - **Producers**: Python scripts that read data from MySQL and Neo4j and send it to Kafka.
 - **Consumer**: Python script that processes data from Kafka topics.
 
@@ -25,15 +26,16 @@ This project is a full-stack backend application that integrates MySQL, Neo4j, K
     cd full-stack-backend
     ```
 
-2. Create a `.env` file with the following environment variables (default values are shown):
-    ```env
-    MYSQL_ROOT_PASSWORD=root
-    MYSQL_DATABASE=clothes
-    MYSQL_USER=clothes
-    MYSQL_PASSWORD=clothes
-    NEO4J_AUTH=neo4j/password
-    KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-    ```
+   2. Create a `.env` file with the following environment variables (default values are shown):
+       ```env
+       MYSQL_ROOT_PASSWORD=root
+       MYSQL_DATABASE=clothes
+       MYSQL_USER=clothes
+       MYSQL_PASSWORD=clothes
+       NEO4J_AUTH=neo4j/password
+       KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+       MONGO_URI=mongodb://mongo:27017/
+       ```
 
 3. Start the services using Docker Compose:
     ```sh
@@ -45,6 +47,7 @@ This project is a full-stack backend application that integrates MySQL, Neo4j, K
 - **MySQL**: Access the MySQL database at `localhost:3307`.
 - **Neo4j**: Access the Neo4j database at `localhost:7474`.
 - **Kafka**: Kafka broker is available at `localhost:9092`.
+- **MongoDB**: Access the MongoDB database at `localhost:27017`.
 
 ## Producers
 
@@ -61,6 +64,7 @@ This project is a full-stack backend application that integrates MySQL, Neo4j, K
 - `data/`: Contains initial data for MySQL and Neo4j.
 - `producers/`: Contains producer scripts.
 - `consumer/`: Contains consumer scripts.
+- `flask/`: Contains a Flask application that serves as an API for the data.
 
 ## Running Producers and Consumer
 
