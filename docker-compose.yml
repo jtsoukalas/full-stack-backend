@@ -1,57 +1,69 @@
 services:
   mysql:
     image: mysql:latest
+    container_name: mysql
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-db}
-      MYSQL_USER: ${MYSQL_USER:-user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+        MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+        MYSQL_DATABASE: ${MYSQL_DATABASE:-clothes}
+        MYSQL_USER: ${MYSQL_USER:-clothes}
+        MYSQL_PASSWORD: ${MYSQL_PASSWORD:-clothes}
     ports:
       - '3307:3306'
     volumes:
-      - ./data/mysql/:/var/lib/mysql
-    depends_on: []
-    networks: []
+      - ./data/volumes/mysql/:/var/lib/mysql
+      - ./data/dummy_clothes.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - mysql_network
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: '512M'
-    init: false
     restart: always
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   neo4j:
     image: neo4j:latest
+    container_name: neo4j
     environment:
       NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/password}
-      NEO4J_dbms_memory_heap_initial__size: ${NEO4J_HEAP_SIZE:-256M}
-      NEO4J_dbms_memory_heap_max__size: ${NEO4J_HEAP_MAX_SIZE:-512M}
-      NEO4J_dbms_default__listen__address: 0.0.0.0
-      NEO4J_ACCEPT_LICENSE_AGREEMENT: '"yes"'
+      NEO4JLABS_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: 'apoc.*'
+      NEO4J_apoc_import_file_enabled: "true"
     ports:
       - '7474:7474'
       - '7687:7687'
     volumes:
-      - ./data/neo4j/:/data
-    depends_on: []
-    networks: []
+      - ./data/volumes/neo4j/:/data
+      - ./data/dummy_users.cypher:/docker-entrypoint-initdb.d/dummy_users.cypher
+    networks:
+        - neo4j_network
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: '1G'
     restart: always
+    healthcheck:
+      test: [ "CMD", "cypher-shell", "-u", "neo4j", "-p", "password", "RETURN 1" ]
+      interval: 15s
+      timeout: 15s
+      retries: 10
 
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
     container_name: zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: ${ZOOKEEPER_CLIENT_PORT:-2181}
-#      ZOOKEEPER_TICK_TIME: ${ZOOKEEPER_TICK_TIME:-2000}
     ports:
       - "2181:2181"
     volumes:
-        - ./data/zookeeper/data:/var/lib/zookeeper/data
-        - ./data/zookeeper/logs:/var/lib/zookeeper/log
+        - ./data/volumes/zookeeper/data:/var/lib/zookeeper/data
+        - ./data/volumes/zookeeper/logs:/var/lib/zookeeper/log
     networks:
       - kafka_network
     deploy:
@@ -59,6 +71,12 @@ services:
         limits:
           cpus: '0.5'
           memory: '1G'
+    restart: always
+    healthcheck:
+      test: [ "CMD", "echo", "ruok", "|", "nc", "localhost", "2181" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -75,7 +93,7 @@ services:
     ports:
       - "9092:9092"
     volumes:
-      - ./data/kafka:/var/lib/kafka/data
+      - ./data/volumes/kafka:/var/lib/kafka/data
       - ./kafka/create-topics.sh:/usr/bin/create-topics.sh
     command: "bash /usr/bin/create-topics.sh"
     networks:
@@ -85,24 +103,33 @@ services:
         limits:
           cpus: '0.5'
           memory: '1G'
+    restart: always
+    healthcheck:
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
-  kafka-manager:
-    image: hlebalbau/kafka-manager:latest
-    ports:
-      - "9000:9000"
-    environment:
-      ZK_HOSTS: zookeeper:2181
-      KM_ARGS: -Dkafka.manager.zkhosts=zookeeper:2181 -Dapplication.secret=letmein -Dkafka.manager.clusterName="kafka-cluster" -Dkafka.manager.brokerViewUpdateSeconds=30 -Dkafka.manager.deleteClusterEnable=true
-    depends_on:
-      - zookeeper
-    networks:
-      - kafka_network
+#  kafka-manager:
+#    image: hlebalbau/kafka-manager:latest
+#    ports:
+#      - "9000:9000"
+#    environment:
+#      ZK_HOSTS: zookeeper:2181
+#      KM_ARGS: -Dkafka.manager.zkhosts=zookeeper:2181 -Dapplication.secret=letmein -Dkafka.manager.clusterName="kafka-cluster" -Dkafka.manager.brokerViewUpdateSeconds=30 -Dkafka.manager.deleteClusterEnable=true
+#    depends_on:
+#      - zookeeper
+#    networks:
+#      - kafka_network
 
   erp_producer:
     image: python:3.9-slim
     container_name: erp_producer
     depends_on:
-      - kafka
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     working_dir: /app
     volumes:
       - ./producers/erp/:/app
@@ -113,12 +140,16 @@ services:
       "
     networks:
       - kafka_network
+      - mysql_network
 
   graph_producer:
     image: python:3.9-slim
     container_name: graph_producer
     depends_on:
-      - kafka
+      neo4j:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     working_dir: /app
     volumes:
       - ./producers/graph/:/app
@@ -129,12 +160,16 @@ services:
       "
     networks:
       - kafka_network
+      - neo4j_network
 
   kafka_consumer:
     image: python:3.9-slim
     container_name: kafka_consumer
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
     working_dir: /app
     volumes:
       - ./consumer/:/app
@@ -145,7 +180,57 @@ services:
       "
     networks:
       - kafka_network
+      - mongodb_network
+
+
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://mongodb:27017/db}
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./data/volumes/mongodb:/data/db
+    networks:
+      - mongodb_network
+    depends_on:
+      kafka:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '1G'
+    restart: always
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  flask-api:
+    build:
+      context: ./flask-api
+    container_name: flask
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://mongodb:27017/db}
+    ports:
+      - "5001:5000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - mongodb_network
+
 
 networks:
   kafka_network:
+    driver: bridge
+  mysql_network:
+    driver: bridge
+  neo4j_network:
+    driver: bridge
+  mongodb_network:
     driver: bridge
