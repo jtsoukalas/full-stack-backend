@@ -87,7 +87,7 @@ This project is a full-stack backend application that integrates MySQL, Neo4j, M
 
 ### MySQL
 ```sh
-docker exec -i mysql mysql -u root -prootpassword < scripts/mysql/clothes.sql
+docker exec -i mysql mysql -u root -prootpassword < ./data/dummy_clothes.sql
 ```
 
 ### Neo4j
